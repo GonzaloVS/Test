@@ -9,6 +9,7 @@ fn funcion_a_evaluar(n: u64) -> u64 {
 #[bench]
 fn bench_funcion_a_evaluar(b: &mut Bencher) {
     b.iter(|| {
+        let texto :&str = "Aa";
         let start = Instant::now();
         let result = funcion_a_evaluar(1000);
         let duration = start.elapsed();
