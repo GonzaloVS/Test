@@ -1,21 +1,3 @@
-// document.getElementById('login-form').addEventListener('submit', function (event) {
-//     event.preventDefault(); // Evita el envío del formulario
-//
-//     const username = document.getElementById('username').value;
-//     const password = document.getElementById('password').value;
-//     const errorMessage = document.getElementById('error-message');
-//
-//     // Lógica de autenticación básica
-//     if (username === "admin" && password === "1234") {
-//         alert("Inicio de sesión exitoso");
-//         errorMessage.style.display = "none";
-//         // Aquí podrías redirigir a otra página
-//     } else {
-//         errorMessage.textContent = "Usuario o contraseña incorrectos";
-//         errorMessage.style.display = "block";
-//     }
-// });
-
 document.getElementById('login-form').addEventListener('submit', async function (event) {
     event.preventDefault(); // Evita el envío del formulario
 
@@ -38,10 +20,10 @@ document.getElementById('login-form').addEventListener('submit', async function 
             const data = await response.json();
             const token = data.token;
 
-            // Guardar el token en localStorage (o sessionStorage)
+            // Guardar el token en localStorage
             localStorage.setItem('authToken', token);
 
-            // Redirigir a index
+            // Redirigir a la página principal
             window.location.href = '/';
         } else {
             // Mostrar mensaje de error
@@ -55,3 +37,31 @@ document.getElementById('login-form').addEventListener('submit', async function 
         errorMessage.style.display = "block";
     }
 });
+
+// Verificar autenticación en la carga de la página
+window.onload = async function () {
+    const authToken = localStorage.getItem('authToken');
+    if (!authToken) {
+        // Redirigir al login si no hay token
+        window.location.href = '/login';
+        return;
+    }
+
+    try {
+        const response = await fetch('/items', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${authToken}`, // Puedes incluir un token adicional si lo deseas
+            },
+        });
+
+        if (response.status === 401) {
+            // Redirigir al login si la sesión no es válida
+            localStorage.removeItem('authToken');
+            window.location.href = '/login';
+        }
+    } catch (error) {
+        console.error('Error al verificar la sesión:', error);
+        window.location.href = '/login';
+    }
+};

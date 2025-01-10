@@ -1,21 +1,15 @@
-/* Reset básico */
-body, h1, p, label, input, button {
+.login-page {
+    font-family: Arial, sans-serif;
     margin: 0;
     padding: 0;
-    box-sizing: border-box;
-    font-family: Arial, sans-serif;
-}
-
-body {
+    background-color: #f3f4f6;
     display: flex;
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    background-color: #f3f4f6;
-    margin: 0;
 }
 
-.login-container {
+.login-page .login-container {
     background-color: #ffffff;
     padding: 20px 30px;
     border-radius: 8px;
@@ -25,25 +19,25 @@ body {
     text-align: center;
 }
 
-h1 {
+.login-page h1 {
     margin-bottom: 20px;
     font-size: 24px;
     color: #333;
 }
 
-.form-group {
+.login-page .form-group {
     margin-bottom: 15px;
     text-align: left;
 }
 
-label {
+.login-page label {
     display: block;
     font-size: 14px;
     color: #555;
     margin-bottom: 5px;
 }
 
-input {
+.login-page input {
     width: 100%;
     padding: 10px;
     border: 1px solid #ccc;
@@ -51,12 +45,12 @@ input {
     font-size: 14px;
 }
 
-input:focus {
+.login-page input:focus {
     border-color: #007bff;
     outline: none;
 }
 
-.login-btn {
+.login-page .login-btn {
     background-color: #007bff;
     color: #fff;
     padding: 10px 15px;
@@ -67,11 +61,11 @@ input:focus {
     width: 100%;
 }
 
-.login-btn:hover {
+.login-page .login-btn:hover {
     background-color: #0056b3;
 }
 
-.error-message {
+.login-page .error-message {
     color: red;
     font-size: 14px;
     margin-top: 10px;

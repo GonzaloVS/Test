@@ -1,20 +1,98 @@
-body {
+.index-page {
     font-family: Arial, sans-serif;
     margin: 0;
     padding: 0;
     background-color: #f4f4f9;
 }
+
+/* Header */
 header {
-    background-color: #6200ee;
-    color: #fff;
-    padding: 1rem;
+    background-color: #620; /* Fondo morado */
+    color: white; /* Texto blanco */
+    padding: 1rem 2rem;
+    box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.2); /* Sombra sutil */
     text-align: center;
 }
-main {
+
+.header-title {
+    font-size: 1.5rem;
+    margin-bottom: 1rem; /* Espacio debajo del título */
+}
+
+/* Navegación */
+.header-nav ul {
+    list-style: none; /* Quitar puntos de lista */
+    padding: 0;
+    margin: 0;
+    display: flex; /* Colocar elementos en línea */
+    justify-content: center; /* Centrar elementos horizontalmente */
+    gap: 2rem; /* Espacio entre enlaces */
+}
+
+.header-nav ul li {
+    margin: 0;
+}
+
+.header-nav ul li a {
+    text-decoration: none; /* Quitar subrayado */
+    color: white; /* Texto blanco */
+    font-weight: bold;
+    transition: color 0.3s; /* Animación suave */
+}
+
+.header-nav ul li a:hover {
+    color: #ffd700; /* Color dorado al pasar el cursor */
+}
+
+.index-page main {
     padding: 2rem;
     text-align: center;
 }
-footer {
+
+.index-page h1 {
+    text-align: center;
+}
+
+.index-page table {
+    width: 90%; /* La tabla ocupa el 90% del ancho disponible */
+    max-width: 800px; /* Ancho máximo para tablas más pequeñas */
+    margin: 2rem auto; /* Espaciado vertical y centrado horizontal */
+    border-collapse: collapse; /* Quitar espacios entre celdas */
+    font-size: 1rem; /* Tamaño de fuente más cómodo */
+    background-color: #ffffff; /* Fondo blanco */
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1); /* Sombra sutil */
+    border-radius: 8px; /* Bordes redondeados */
+    overflow: hidden; /* Aplicar el radio a los bordes */
+}
+
+.index-page table th, .index-page table td {
+    padding: 12px 15px; /* Espaciado interno */
+    border: 1px solid #ddd; /* Líneas entre celdas */
+    text-align: left; /* Alineación del texto */
+}
+
+.index-page table th {
+    background-color: #6200ee; /* Fondo morado para encabezado */
+    color: white; /* Texto blanco */
+    text-transform: uppercase; /* Texto en mayúsculas */
+    font-weight: bold; /* Texto en negrita */
+}
+
+.index-page table tr:nth-child(even) {
+    background-color: #f9f9f9; /* Fondo gris claro para filas pares */
+}
+
+.index-page table tr:hover {
+    background-color: #f1f1f1; /* Fondo más oscuro al pasar el cursor */
+    transition: background-color 0.3s ease; /* Transición suave */
+}
+
+.index-page table td {
+    color: #333; /* Color de texto para celdas */
+}
+
+
+.index-page footer {
     background-color: #6200ee;
     color: #fff;
     padding: 1rem;
