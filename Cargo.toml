@@ -5,19 +5,20 @@ edition = "2021"
 
 [dependencies]
 # Actix para el servidor web
-actix-web = "4"
-actix-files = "0.6"
+actix-web = "4.9.0"
+actix-files = "0.6.6"
 actix-session = { version = "0.10.1", features = ["cookie-session"] }
+actix-web-actors = "4.3.1+deprecated"
 
 # Tokio para manejo asíncrono
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.43.0", features = ["full"] }
 
 # Conexión a PostgreSQL
-tokio-postgres = "0.7"
+tokio-postgres = "0.7.12"
 
 # Serialización y deserialización
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.135"
 
 # Manejo de tokens JWT
 jsonwebtoken = "9.3.0"
@@ -26,34 +27,15 @@ jsonwebtoken = "9.3.0"
 reqwest = { version = "0.12.12", features = ["blocking"] }
 
 # Generación de UUIDs
-uuid = { version = "1.11.0", features = ["v4"] }
+uuid = { version = "1.11.1", features = ["v4"] }
 
 # Monitoreo de cambios en archivos
-notify = "7.0.0"
+notify = "8.0.0"
+
+
+lazy_static = "1.5.0"
 
 [dev-dependencies]
 # Dependencias de desarrollo si las necesitas más adelante
 
-#[package]
-#name = "Test"
-#version = "0.1.0"
-#edition = "2021"
-#
-#[dependencies]
-#actix-web = "4"
-#actix-session = { version = "0.10.1", features = ["cookie-session"] }
-#
-#tokio = { version = "1.43.0", features = ["full"] }
-#
-#serde = { version = "1.0.217", features = ["derive"] }
-#
-#uuid = { version = "1.11.0", features = ["v4"] }
-#notify = "7.0.0"
-#
-#[build-dependencies]
-#chrono = "0.4.39"
-#
-#
-#[[bench]]
-#name = "bench"
-#harness = false
+
