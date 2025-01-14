@@ -6,9 +6,19 @@ use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::HashSet;
 use std::io;
 use std::path::Path;
+use actix_web::dev::ServiceResponse;
+use actix_web::http::StatusCode;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use uuid::Uuid;
+
+async fn error_handler<B>(res: ServiceResponse<B>) -> Result<middleware::ErrorHandlerResponse<B>> let response = match res.response().status() {
+StatusCode::INTERNAL_SERVER_ERROR => HttpResponse::InternalServerError()
+.body("Página personalizada de error 500"),
+_ => res.into_response(),
+};
+Ok(middleware::ErrorHandlerResponse::Response(response))
+}
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
@@ -37,12 +47,19 @@ async fn main() -> io::Result<()> {
                 CookieSessionStore::default(),
                 secret_key(),
             ))
+            .wrap(middleware::ErrorHandlers::new()
+                .handler(StatusCode::INTERNAL_SERVER_ERROR, error_handler))
             .route("/", web::get().to(index_page))
             .route("/index.js", web::get().to(index_script))
             .route("/login", web::get().to(login_page))
             .route("/login.js", web::get().to(login_script))
             .route("/all.css", web::get().to(allcss_page))
+            .route("/antigua-url", web::get().to(redirect_301))
+            .route("/temporal-url", web::get().to(redirect_302))
             .default_service(web::route().to(not_found)) // Manejo 404
+            .prefer_utf8(true)
+            .use_etag(true)
+            .use_last_modified(true)
     })
         .bind("127.0.0.1:80")?
         .workers(8)              // Ajustar segun los nucleos del servidor
@@ -56,7 +73,11 @@ async fn main() -> io::Result<()> {
 // Página principal protegida
 async fn index_page(session: Session) -> impl Responder {
     if session.get::<String>("auth_token").unwrap_or(None).is_some() {
-        HttpResponse::Ok().body("Página principal protegida")
+        HttpResponse::Ok()
+            .append_header(("Cache-Control", "max-age=31536000")) // 1 año
+            .append_header(("ETag", "custom-etag-value"))
+            .body("Página principal protegida")
+
     } else {
         HttpResponse::Found()
             .append_header(("Location", "/login"))
@@ -70,6 +91,8 @@ async fn index_script() -> actix_web::Result<NamedFile> {
 
 async fn login_page() -> actix_web::Result<NamedFile> {
     Ok(NamedFile::open("./static/login/login.html")?)
+        .append_header(("Cache-Control", "max-age=31536000")) // 1 año
+        .append_header(("ETag", "custom-etag-value"))
 }
 
 async fn login_script() -> actix_web::Result<NamedFile> {
@@ -85,7 +108,16 @@ async fn not_found() -> impl Responder {
     HttpResponse::NotFound().body("404 Página no encontrada")
 }
 
-
+async fn redirect_301() -> HttpResponse {
+    HttpResponse::MovedPermanently()
+        .append_header(("Location", "/nuevo-destino"))
+        .finish()
+}
+async fn redirect_302() -> HttpResponse {
+    HttpResponse::Found()
+        .append_header(("Location", "/temporal-destino"))
+        .finish()
+}
 
 
 // Monitorear cambios en la carpeta de CSS
