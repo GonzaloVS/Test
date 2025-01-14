@@ -7,7 +7,7 @@ document.getElementById('login-form').addEventListener('submit', async function 
 
     try {
         // Enviar credenciales al servidor
-        const response = await fetch('/login', {
+        const response = await fetch('static/login', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -43,7 +43,7 @@ window.onload = async function () {
     const authToken = localStorage.getItem('authToken');
     if (!authToken) {
         // Redirigir al login si no hay token
-        window.location.href = '/login';
+        window.location.href = 'static/login';
         return;
     }
 
@@ -58,10 +58,10 @@ window.onload = async function () {
         if (response.status === 401) {
             // Redirigir al login si la sesión no es válida
             localStorage.removeItem('authToken');
-            window.location.href = '/login';
+            window.location.href = 'static/login';
         }
     } catch (error) {
         console.error('Error al verificar la sesión:', error);
-        window.location.href = '/login';
+        window.location.href = 'static/login';
     }
 };

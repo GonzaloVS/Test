@@ -1,24 +1,16 @@
+mod file_utils;
+mod file_cache;
+
+use actix_cors::Cors;
 use actix_files::NamedFile;
 use actix_session::{storage::CookieSessionStore, Session, SessionMiddleware};
-use actix_web::{cookie::Key, middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
-use lazy_static::lazy_static;
+use actix_web::{cookie::Key, middleware, web, App, HttpResponse, HttpServer, Responder};
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use std::collections::HashSet;
 use std::io;
 use std::path::Path;
-use actix_web::dev::ServiceResponse;
-use actix_web::http::StatusCode;
 use tokio::io::AsyncWriteExt;
-use tokio::sync::mpsc;
-use uuid::Uuid;
+use tokio::sync::{mpsc};
 
-async fn error_handler<B>(res: ServiceResponse<B>) -> Result<middleware::ErrorHandlerResponse<B>> let response = match res.response().status() {
-StatusCode::INTERNAL_SERVER_ERROR => HttpResponse::InternalServerError()
-.body("Página personalizada de error 500"),
-_ => res.into_response(),
-};
-Ok(middleware::ErrorHandlerResponse::Response(response))
-}
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
@@ -40,15 +32,23 @@ async fn main() -> io::Result<()> {
     // Iniciar el servidor web
     HttpServer::new(|| {
         App::new()
-            // Habilitar compresión automática (Gzip, Deflate, Brotli)
-            .wrap(middleware::Compress::default())
-            // Middleware de sesiones
             .wrap(SessionMiddleware::new(
                 CookieSessionStore::default(),
                 secret_key(),
             ))
-            .wrap(middleware::ErrorHandlers::new()
-                .handler(StatusCode::INTERNAL_SERVER_ERROR, error_handler))
+            .wrap(
+                Cors::default()
+                    .allowed_origin("https://example.com")
+                    .allowed_methods(vec!["GET", "POST"])
+                    .allowed_headers(vec![actix_web::http::header::CONTENT_TYPE])
+                    .max_age(3600),
+            )
+            .wrap(middleware::DefaultHeaders::new()
+                .add(("X-Custom-Header", "Value"))
+                .add(("Strict-Transport-Security", "max-age=63072000; includeSubDomains"))
+                .add(("X-Frame-Options", "DENY"))
+                .add(("X-Content-Type-Options", "nosniff")))
+            .wrap(middleware::Compress::default())
             .route("/", web::get().to(index_page))
             .route("/index.js", web::get().to(index_script))
             .route("/login", web::get().to(login_page))
@@ -56,18 +56,24 @@ async fn main() -> io::Result<()> {
             .route("/all.css", web::get().to(allcss_page))
             .route("/antigua-url", web::get().to(redirect_301))
             .route("/temporal-url", web::get().to(redirect_302))
+            .route("/items", web::get().to(items_handler))
+            .route("/etag", web::get().to(test_page))
             .default_service(web::route().to(not_found)) // Manejo 404
-            .prefer_utf8(true)
-            .use_etag(true)
-            .use_last_modified(true)
     })
         .bind("127.0.0.1:80")?
-        .workers(8)              // Ajustar segun los nucleos del servidor
-        .max_connections(50_000) // 50,000 conexiones activas
-        .max_connection_rate(1_000) // Hasta 1,000 conexiones nuevas por segundo
+        .workers(8)
+        .max_connections(50_000)
+        .max_connection_rate(1_000)
+        .client_request_timeout(std::time::Duration::from_secs(30))
+        .client_disconnect_timeout(std::time::Duration::from_secs(5))
         .run()
         .await
 }
+
+async fn test_page() -> HttpResponse {
+    file_cache::file_handler("./static/login/login.html")
+}
+
 
 
 // Página principal protegida
@@ -91,8 +97,8 @@ async fn index_script() -> actix_web::Result<NamedFile> {
 
 async fn login_page() -> actix_web::Result<NamedFile> {
     Ok(NamedFile::open("./static/login/login.html")?)
-        .append_header(("Cache-Control", "max-age=31536000")) // 1 año
-        .append_header(("ETag", "custom-etag-value"))
+        //.append_header(("Cache-Control", "max-age=31536000")) // 1 año
+        //.append_header(("ETag", "custom-etag-value"))
 }
 
 async fn login_script() -> actix_web::Result<NamedFile> {
@@ -119,6 +125,24 @@ async fn redirect_302() -> HttpResponse {
         .finish()
 }
 
+// fn file_handler() -> HttpResponse {
+//     HttpResponse::Ok()
+//         .append_header(("Cache-Control", "max-age=31536000")) // 1 año
+//         .append_header(("ETag", "custom-etag-value"))
+//         .body("Contenido del archivo estático")
+// }
+
+async fn items_handler(session: Session) -> impl Responder {
+    if session.get::<String>("auth_token").unwrap_or(None).is_some() {
+        HttpResponse::Ok().json(vec![
+            "Item 1",
+            "Item 2",
+            "Item 3",
+        ]) // Devuelve una lista de ítems como JSON
+    } else {
+        HttpResponse::Unauthorized().body("No autorizado")
+    }
+}
 
 // Monitorear cambios en la carpeta de CSS
 async fn monitor_changes(css_dir: &str, output_file: &str) -> io::Result<()> {
@@ -188,3 +212,4 @@ async fn combine_css(css_dir: &str, output_file: &str) -> io::Result<()> {
 fn secret_key() -> Key {
     Key::from(&[0; 64])
 }
+
