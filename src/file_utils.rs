@@ -1,9 +1,8 @@
 use std::{fs, io};
 use sha2::{Sha256, Digest};
-use crate::file_utils;
 
 pub(crate) fn generate_etag(vec_file: &Vec<u8>) -> Result<String, io::Error> {
-
+//Result<String, es tipo String porque se tiene que saber el tamaño al compilar
     let mut hasher = Sha256::new();
 
     hasher.update(&vec_file);

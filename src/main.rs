@@ -1,8 +1,8 @@
 mod file_utils;
 mod file_cache;
+mod error_400_utils;
 
 use actix_cors::Cors;
-use actix_files::NamedFile;
 use actix_session::{storage::CookieSessionStore, Session, SessionMiddleware};
 use actix_web::{cookie::Key, middleware, web, App, HttpResponse, HttpServer, Responder};
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -57,8 +57,13 @@ async fn main() -> io::Result<()> {
             .route("/antigua-url", web::get().to(redirect_301))
             .route("/temporal-url", web::get().to(redirect_302))
             .route("/items", web::get().to(items_handler))
-            .route("/etag", web::get().to(test_page))
             .default_service(web::route().to(not_found)) // Manejo 404
+            .app_data(web::JsonConfig::default().error_handler(|err, _req| {
+                actix_web::error::InternalError::from_response(
+                    err,
+                    error_400_utils::handle_400_error().into() )
+                    .into()
+            }))
     })
         .bind("127.0.0.1:80")?
         .workers(8)
@@ -70,20 +75,24 @@ async fn main() -> io::Result<()> {
         .await
 }
 
-async fn test_page() -> HttpResponse {
-    file_cache::file_handler("./static/login/login.html")
-}
-
-
-
 // Página principal protegida
+// async fn index_page(session: Session) -> impl Responder {
+//     if session.get::<String>("auth_token").unwrap_or(None).is_some() {
+//         HttpResponse::Ok()
+//             .append_header(("Cache-Control", "max-age=31536000")) // 1 año
+//             .append_header(("ETag", "custom-etag-value"))
+//             .body("Página principal protegida")
+//
+//     } else {
+//         HttpResponse::Found()
+//             .append_header(("Location", "/login"))
+//             .finish()
+//     }
+// }
+
 async fn index_page(session: Session) -> impl Responder {
     if session.get::<String>("auth_token").unwrap_or(None).is_some() {
-        HttpResponse::Ok()
-            .append_header(("Cache-Control", "max-age=31536000")) // 1 año
-            .append_header(("ETag", "custom-etag-value"))
-            .body("Página principal protegida")
-
+        file_cache::file_handler("./static/index/index.html")
     } else {
         HttpResponse::Found()
             .append_header(("Location", "/login"))
@@ -91,25 +100,22 @@ async fn index_page(session: Session) -> impl Responder {
     }
 }
 
-async fn index_script() -> actix_web::Result<NamedFile> {
-    Ok(NamedFile::open("./static/index/index_script.js")?)
+async fn index_script() -> HttpResponse {
+    file_cache::file_handler("./static/index/index_script.js")
 }
 
-async fn login_page() -> actix_web::Result<NamedFile> {
-    Ok(NamedFile::open("./static/login/login.html")?)
-        //.append_header(("Cache-Control", "max-age=31536000")) // 1 año
-        //.append_header(("ETag", "custom-etag-value"))
+async fn login_page() -> HttpResponse {
+    file_cache::file_handler("./static/login/login.html")
 }
 
-async fn login_script() -> actix_web::Result<NamedFile> {
-    Ok(NamedFile::open("./static/login/login_script.js")?)
+async fn login_script() -> HttpResponse {
+    file_cache::file_handler("./static/login/login_script.js")
 }
 
-async fn allcss_page() -> actix_web::Result<NamedFile> {
-    Ok(NamedFile::open("./static/all.css")?)
-}
+async fn allcss_page() -> HttpResponse {
+    file_cache::file_handler("./static/all.css")
+} // Página de error 404
 
-// Página de error 404
 async fn not_found() -> impl Responder {
     HttpResponse::NotFound().body("404 Página no encontrada")
 }
@@ -119,12 +125,12 @@ async fn redirect_301() -> HttpResponse {
         .append_header(("Location", "/nuevo-destino"))
         .finish()
 }
+
 async fn redirect_302() -> HttpResponse {
     HttpResponse::Found()
         .append_header(("Location", "/temporal-destino"))
         .finish()
 }
-
 // fn file_handler() -> HttpResponse {
 //     HttpResponse::Ok()
 //         .append_header(("Cache-Control", "max-age=31536000")) // 1 año
