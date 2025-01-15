@@ -1,16 +1,14 @@
 mod file_utils;
 mod file_cache;
 mod error_400_utils;
+mod css_utils;
 
 use actix_cors::Cors;
 use actix_session::{storage::CookieSessionStore, Session, SessionMiddleware};
-use actix_web::{cookie::Key, middleware, web, App, HttpResponse, HttpServer, Responder};
-use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use actix_web::{cookie::Key, middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use std::io;
 use std::path::Path;
-use tokio::io::AsyncWriteExt;
-use tokio::sync::{mpsc};
-
+use actix_web::web::route;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
@@ -18,54 +16,35 @@ async fn main() -> io::Result<()> {
     let output_file = "./static/all.css";
 
     // Primera combinación inicial
-    if let Err(e) = combine_css(css_dir, output_file).await {
-        eprintln!("Error inicial al combinar CSS: {}", e);
-    }
+    // if let Err(e) = css_utils::combine_css(css_dir, output_file).await {
+    //     eprintln!("Error inicial al combinar CSS: {}", e);
+    // }
+    //
+    // // Iniciar el monitoreo de cambios
+    // tokio::spawn(async move {
+    //     if let Err(e) = css_utils::monitor_changes(css_dir, output_file).await {
+    //         eprintln!("Error en el monitoreo de cambios: {}", e);
+    //     }
+    // });
 
-    // Iniciar el monitoreo de cambios
-    tokio::spawn(async move {
-        if let Err(e) = monitor_changes(css_dir, output_file).await {
-            eprintln!("Error en el monitoreo de cambios: {}", e);
-        }
-    });
+    env_logger::init(); // Inicializa logs
 
-    // Iniciar el servidor web
-    HttpServer::new(|| {
-        App::new()
-            .wrap(SessionMiddleware::new(
-                CookieSessionStore::default(),
-                secret_key(),
-            ))
-            .wrap(
-                Cors::default()
-                    .allowed_origin("https://example.com")
-                    .allowed_methods(vec!["GET", "POST"])
-                    .allowed_headers(vec![actix_web::http::header::CONTENT_TYPE])
-                    .max_age(3600),
-            )
-            .wrap(middleware::DefaultHeaders::new()
-                .add(("X-Custom-Header", "Value"))
-                .add(("Strict-Transport-Security", "max-age=63072000; includeSubDomains"))
-                .add(("X-Frame-Options", "DENY"))
-                .add(("X-Content-Type-Options", "nosniff")))
-            .wrap(middleware::Compress::default())
-            .route("/", web::get().to(index_page))
-            .route("/index.js", web::get().to(index_script))
-            .route("/login", web::get().to(login_page))
-            .route("/login.js", web::get().to(login_script))
-            .route("/all.css", web::get().to(allcss_page))
-            .route("/antigua-url", web::get().to(redirect_301))
-            .route("/temporal-url", web::get().to(redirect_302))
-            .route("/items", web::get().to(items_handler))
-            .default_service(web::route().to(not_found)) // Manejo 404
-            .app_data(web::JsonConfig::default().error_handler(|err, _req| {
-                actix_web::error::InternalError::from_response(
-                    err,
-                    error_400_utils::handle_400_error().into() )
-                    .into()
-            }))
-    })
-        .bind("127.0.0.1:80")?
+    // Configuración de direcciones y puertos
+    let http_addr = "127.0.0.1:80";
+    let https_addr = "127.0.0.1:443";
+
+    tokio::join!(
+        start_http_server(http_addr),
+        //start_https_server(https_addr)
+    );
+
+    Ok(())
+}
+
+
+async fn start_http_server(addr: &str) -> io::Result<()> {
+    HttpServer::new(app_factory)
+        .bind(addr)?
         .workers(8)
         .max_connections(50_000)
         .max_connection_rate(1_000)
@@ -73,6 +52,91 @@ async fn main() -> io::Result<()> {
         .client_disconnect_timeout(std::time::Duration::from_secs(5))
         .run()
         .await
+}
+
+// async fn start_https_server(addr: &str) -> io::Result<()> {
+//     HttpServer::new(app_factory)
+//         .bind_openssl(addr, load_ssl_keys()?)?
+//         .workers(8)
+//         .max_connections(50_000)
+//         .max_connection_rate(1_000)
+//         .client_request_timeout(std::time::Duration::from_secs(30))
+//         .client_disconnect_timeout(std::time::Duration::from_secs(5))
+//         .run()
+//         .await
+// }
+
+fn app_factory() -> App() {
+    App::new()
+        .wrap(SessionMiddleware::new(
+            CookieSessionStore::default(),
+            secret_key(),
+        ))
+        .wrap(
+            Cors::default()
+                .allowed_origin("https://example.com")
+                .allowed_methods(vec!["GET", "POST"])
+                .allowed_headers(vec![actix_web::http::header::CONTENT_TYPE])
+                .max_age(3600),
+        )
+        .wrap(middleware::DefaultHeaders::new()
+            .add(("X-Custom-Header", "Value"))
+            .add(("Strict-Transport-Security", "max-age=63072000; includeSubDomains"))
+            .add(("X-Frame-Options", "DENY"))
+            .add(("X-Content-Type-Options", "nosniff")))
+        .wrap(middleware::Compress::default())
+        .route("/", web::get().to(index_page))
+        .route("/index.js", web::get().to(index_script))
+        .route("/login", web::get().to(login_page))
+        .route("/login.js", web::get().to(login_script))
+        .route("/all.css", web::get().to(allcss_page))
+        .route("/antigua-url", web::get().to(redirect_301))
+        .route("/temporal-url", web::get().to(redirect_302))
+        .route("/items", web::get().to(items_handler))
+        .route("/static/{filename:.*}", web::get().to(static_files))
+        .default_service(web::route().to(not_found))
+        .app_data(web::JsonConfig::default().error_handler(|err, _req| {
+            actix_web::error::InternalError::from_response(
+                err,
+                error_400_utils::handle_400_error().into(),
+            )
+            .into()
+        }))
+}
+
+// Función para cargar certificados SSL
+// fn load_ssl_keys() -> std::io::Result<openssl::ssl::SslAcceptor> {
+//     use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
+//
+//     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
+//     builder.set_private_key_file("certs/private.key", SslFiletype::PEM)?;
+//     builder.set_certificate_chain_file("certs/certificate.crt")?;
+//     Ok(builder.build())
+// }
+
+
+async fn static_files(req: HttpRequest) -> HttpResponse {
+    let filename: String = req.match_info().query("filename").parse().unwrap();
+    let path = format!("./static/{}", filename);
+
+    println!("RUTA GENÉRICA: Solicitado: {}, Mapeado a: {}", filename, path);
+
+    if Path::new(&path).exists() {
+        file_cache::file_handler(&path)
+    } else {
+        HttpResponse::NotFound().body("Archivo no encontrado")
+    }
+}
+
+async fn index_page(session: Session) -> impl Responder {
+    if session.get::<String>("auth_token").unwrap_or(None).is_some() {
+        file_cache::file_handler("./static/index/index.html")
+    } else {
+        HttpResponse::Found()
+            //.append_header(("Location", "/login"))
+            .append_header(("login", "./login/login.html"))
+            .finish()
+    }
 }
 
 // Página principal protegida
@@ -90,32 +154,42 @@ async fn main() -> io::Result<()> {
 //     }
 // }
 
-async fn index_page(session: Session) -> impl Responder {
-    if session.get::<String>("auth_token").unwrap_or(None).is_some() {
-        file_cache::file_handler("./static/index/index.html")
-    } else {
-        HttpResponse::Found()
-            .append_header(("Location", "/login"))
-            .finish()
-    }
-}
+
 
 async fn index_script() -> HttpResponse {
     file_cache::file_handler("./static/index/index_script.js")
 }
 
+// async fn login_page() -> HttpResponse {
+//     //file_cache::file_handler(".static/login/login.html")
+//     HttpResponse::Found()
+//         .append_header(("login", ".static/login/login.html"))
+//         .finish()
+// }
+
 async fn login_page() -> HttpResponse {
-    file_cache::file_handler("./static/login/login.html")
+    let path = "./static/login/login.html"; // Ruta completa al archivo
+
+    // Verificar si el archivo existe
+    if !Path::new(path).is_file() {
+        eprintln!("Archivo no encontrado: {}", path);
+        return HttpResponse::NotFound().body("Archivo no encontrado");
+    }
+
+    println!("Sirviendo archivo desde /login: {}", path);
+    file_cache::file_handler(path) // Sirve el archivo
 }
+
 
 async fn login_script() -> HttpResponse {
     file_cache::file_handler("./static/login/login_script.js")
 }
 
 async fn allcss_page() -> HttpResponse {
-    file_cache::file_handler("./static/all.css")
-} // Página de error 404
+    file_cache::file_handler("./all.css")
+}
 
+// Página de error 404
 async fn not_found() -> impl Responder {
     HttpResponse::NotFound().body("404 Página no encontrada")
 }
@@ -131,6 +205,7 @@ async fn redirect_302() -> HttpResponse {
         .append_header(("Location", "/temporal-destino"))
         .finish()
 }
+
 // fn file_handler() -> HttpResponse {
 //     HttpResponse::Ok()
 //         .append_header(("Cache-Control", "max-age=31536000")) // 1 año
@@ -148,69 +223,6 @@ async fn items_handler(session: Session) -> impl Responder {
     } else {
         HttpResponse::Unauthorized().body("No autorizado")
     }
-}
-
-// Monitorear cambios en la carpeta de CSS
-async fn monitor_changes(css_dir: &str, output_file: &str) -> io::Result<()> {
-    println!("Monitoreando cambios en '{}'", css_dir);
-
-    let (tx, mut rx) = mpsc::channel(1);
-
-    let mut watcher = RecommendedWatcher::new(
-        move |res| {
-            if let Ok(event) = res {
-                let _ = tx.try_send(event);
-            }
-        },
-        Default::default(),
-    )
-        .unwrap();
-
-    watcher
-        .watch(Path::new(css_dir), RecursiveMode::Recursive)
-        .unwrap();
-
-    while let Some(event) = rx.recv().await {
-        match event.kind {
-            EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => {
-                println!("Detectado cambio: {:?}", event);
-                if let Err(e) = combine_css(css_dir, output_file).await {
-                    eprintln!("Error al combinar CSS: {}", e);
-                }
-            }
-            _ => {
-                println!("Evento ignorado: {:?}", event.kind);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-// Combinar todos los archivos CSS en uno
-async fn combine_css(css_dir: &str, output_file: &str) -> io::Result<()> {
-    let mut output = tokio::fs::File::create(output_file).await?;
-    let mut stack = vec![Path::new(css_dir).to_path_buf()];
-
-    while let Some(current_dir) = stack.pop() {
-        let mut entries = tokio::fs::read_dir(&current_dir).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().and_then(|ext| ext.to_str()) == Some("css") {
-                let content = tokio::fs::read_to_string(&path).await?;
-                output
-                    .write_all(format!("/* {} */\n", path.display()).as_bytes())
-                    .await?;
-                output.write_all(content.as_bytes()).await?;
-                println!("CSS añadido: {}", path.display());
-            }
-        }
-    }
-
-    println!("CSS combinado en '{}'", output_file);
-    Ok(())
 }
 
 

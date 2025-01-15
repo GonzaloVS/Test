@@ -5,15 +5,16 @@ edition = "2021"
 
 [dependencies]
 # Actix para el servidor web
-actix-web = "4.9.0"
+actix-web = { version = "4.9.0", features = ["openssl"] }
 actix-files = "0.6.6"
 actix-session = { version = "0.10.1", features = ["cookie-session"] }
 actix-web-actors = "4.3.1+deprecated"
-actix-cors = "0.6"
+actix-cors = "0.7.0"
+# Middleware adicional para compresión
+actix-web-lab = "0.23.0"
 
 # Tokio para manejo asíncrono
 tokio = { version = "1.43.0", features = ["full"] }
-
 # Conexión a PostgreSQL
 tokio-postgres = "0.7.12"
 
@@ -33,18 +34,14 @@ uuid = { version = "1.11.1", features = ["v4"] }
 # Monitoreo de cambios en archivos
 notify = "8.0.0"
 
-# Middleware adicional para compresión
-actix-web-lab = "0.23.0"
-
-# Registro de middleware
-log = "0.4"
-
+log = "0.4.25"
 http = "1.2.0"
 futures = "0.3.31"
 env_logger = "0.11.6"
-
 lazy_static = "1.5.0"
 sha2 = "0.10.8"
+mime = "0.3.17"
+#openssl = "0.10.68"
 
 
 [features]
