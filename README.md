@@ -1,6 +1,6 @@
 # Proyecto de Servidor en Rust
 
-## Tareas Pendientes
+## Roadmap
 
 ### Configuración y Mejora del Servidor
 
