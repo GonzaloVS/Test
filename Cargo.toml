@@ -5,40 +5,41 @@ edition = "2021"
 
 [dependencies]
 # Actix para el servidor web
-actix-web = { version = "4.9.0", features = ["openssl"] }
-actix-files = "0.6.6"
+#actix-web = { version = "4.9.0", features = ["openssl"] }
+actix-web = "4.9.0"
+#actix-files = "0.6.6"
 actix-session = { version = "0.10.1", features = ["cookie-session"] }
-actix-web-actors = "4.3.1+deprecated"
+#actix-web-actors = "4.3.1+deprecated"
 actix-cors = "0.7.0"
-actix-extensible-rate-limit = "0.4.0"
+#actix-extensible-rate-limit = "0.4.0"
 # Middleware adicional para compresión
-actix-web-lab = "0.23.0"
+#actix-web-lab = "0.23.0"
 
 # Tokio para manejo asíncrono
 tokio = { version = "1.43.0", features = ["full"] }
 # Conexión a PostgreSQL
-tokio-postgres = "0.7.12"
+#tokio-postgres = "0.7.12"
 
 # Serialización y deserialización
-serde = { version = "1.0.217", features = ["derive"] }
-serde_json = "1.0.135"
+#serde = { version = "1.0.217", features = ["derive"] }
+#serde_json = "1.0.135"
 
 # Manejo de tokens JWT
-jsonwebtoken = "9.3.0"
+#jsonwebtoken = "9.3.0"
 
 # Cliente HTTP
-reqwest = { version = "0.12.12", features = ["blocking"] }
+#reqwest = { version = "0.12.12", features = ["blocking"] }
 
 # Generación de UUIDs
-uuid = { version = "1.11.1", features = ["v4"] }
+#uuid = { version = "1.11.1", features = ["v4"] }
 
 # Monitoreo de cambios en archivos
 notify = "8.0.0"
 
-log = "0.4.25"
-http = "1.2.0"
-futures = "0.3.31"
-env_logger = "0.11.6"
+#log = "0.4.25"
+#http = "1.2.0"
+#futures = "0.3.31"
+#env_logger = "0.11.6"
 lazy_static = "1.5.0"
 sha2 = "0.10.8"
 mime = "0.3.17"

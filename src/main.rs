@@ -2,49 +2,38 @@ mod file_utils;
 mod file_cache;
 mod error_400_utils;
 mod css_utils;
+mod metrics;
 
 use actix_cors::Cors;
 use actix_session::{storage::CookieSessionStore, Session, SessionMiddleware};
 use actix_web::{cookie::Key, middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
-use governor::{state::InMemoryState, RateLimiter};
+use governor::{state::InMemoryState, Quota, RateLimiter};
+use governor::clock::DefaultClock;
 use std::io;
+use std::num::NonZeroU32;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use actix_web::web::route;
-use governor::clock::DefaultClock;
-use prometheus::{Counter, Histogram, HistogramOpts, Opts, Registry, TextEncoder};
+use actix_web::dev::{ServiceFactory, ServiceRequest, ServiceResponse};
+use governor::state::NotKeyed;
+use crate::metrics::{export_metrics, Metrics};
 
-struct Metrics {
-    http_requests_total: Counter,
-    request_duration: Histogram,
-}
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
+
+    // Crear el registro de métricas y las métricas
+    let registry = Arc::new(prometheus::Registry::new());
+    let metrics = Arc::new(Metrics::new(registry.clone()));
+
     let css_dir = "./static";
     let output_file = "./static/all.css";
 
-    // Crear un registro de métricas global
-    let registry = Arc::new(Registry::new());
+    //Primera combinación inicial
+    if let Err(e) = css_utils::combine_css(css_dir, output_file).await {
+        eprintln!("Error inicial al combinar CSS: {}", e);
+    }
 
-    // Crear métricas: contador y un histograma
-    let http_requests_total = Counter::new("http_requests_total", "Total de solicitudes HTTP").unwrap();
-    let request_duration = Histogram::with_opts(
-        HistogramOpts::from(Opts::new("http_request_duration_seconds", "Duración de las solicitudes HTTP en segundos"))
-    ).unwrap();
-
-    // Registrar métricas en el registro
-    registry.register(Box::new(http_requests_total.clone())).unwrap();
-    registry.register(Box::new(request_duration.clone())).unwrap();
-
-    // Clonar el registro para usarlo en el servidor
-    let registry_cloned = registry.clone();
-    // Primera combinación inicial
-    // if let Err(e) = css_utils::combine_css(css_dir, output_file).await {
-    //     eprintln!("Error inicial al combinar CSS: {}", e);
-    // }
-    //
     // // Iniciar el monitoreo de cambios
     // tokio::spawn(async move {
     //     if let Err(e) = css_utils::monitor_changes(css_dir, output_file).await {
@@ -52,35 +41,39 @@ async fn main() -> io::Result<()> {
     //     }
     // });
 
-    env_logger::init(); // Inicializa logs
+    //env_logger::init(); // Inicializa logs
 
     // Configuración de direcciones y puertos
     let http_addr = "127.0.0.1:80";
-    let https_addr = "127.0.0.1:443";
+    //let https_addr = "127.0.0.1:443";
 
-    tokio::join!(
-        start_http_server(http_addr),
-        //start_https_server(https_addr)
-    );
+    // tokio::join!(
+    //     start_http_server(http_addr),
+    //     //start_https_server(https_addr)
+    // );
 
-    Ok(())
+    // Iniciar el servidor HTTP
+    start_http_server(http_addr, metrics)
+        .await
 }
 
-
-async fn start_http_server(addr: &str) -> io::Result<()> {
-    HttpServer::new(app_factory)
+async fn start_http_server(addr: &str, metrics: Arc<Metrics>) -> io::Result<()> {
+    HttpServer::new({
+        let metrics = metrics.clone();
+        move || app_factory(metrics.clone())
+    })
         .bind(addr)?
         .workers(8)
         .max_connections(50_000)
         .max_connection_rate(1_000)
-        .client_request_timeout(std::time::Duration::from_secs(30))
-        .client_disconnect_timeout(std::time::Duration::from_secs(5))
+        .client_request_timeout(Duration::from_secs(30))
+        .client_disconnect_timeout(Duration::from_secs(5))
         .run()
         .await
 }
 
-// async fn start_https_server(addr: &str) -> io::Result<()> {
-//     HttpServer::new(app_factory)
+// async fn start_https_server(addr: &str,  metrics: Arc<Metrics>) -> io::Result<()> {
+//     HttpServer::new(move || app_factory(metrics.clone()))
 //         .bind_openssl(addr, load_ssl_keys()?)?
 //         .workers(8)
 //         .max_connections(50_000)
@@ -91,27 +84,56 @@ async fn start_http_server(addr: &str) -> io::Result<()> {
 //         .await
 // }
 
-fn app_factory() -> App() {
-
-    // let rate_limiter = RateLimiter::builder(InMemoryBackend::builder().build())
-    //     .interval(Duration::from_secs(60)) // Intervalo de tiempo
-    //     .max_requests(100) // Máximo de solicitudes permitidas
-    //     .build();
-    let rate_limiter = RateLimiter::builder(InMemoryState::default())
-        .clock(DefaultClock)
-        .interval(Duration::from_secs(60)) // Intervalo de tiempo
-        .max_requests(100) // Máximo de solicitudes permitidas
-        .build();
+// fn app_factory(metrics: Arc<Metrics>) -> App<impl ServiceFactory<ServiceRequest>>  {
+//     let rate_limiter = create_rate_limiter();
+//
+//     App::new()
+//     //     .wrap(
+//     //         SessionMiddleware::new(
+//     //             CookieSessionStore::default(),
+//     //             secret_key(),
+//     //         )
+//     //     )
+//     //     .cookie_same_site(actix_web::cookie::SameSite::Strict)
+//
+//     // )
+//         .wrap(
+//             SessionMiddleware::builder(
+//                 CookieSessionStore::default(),
+//                 secret_key(),
+//             )
+//                 .cookie_same_site(actix_web::cookie::SameSite::Strict)
+//                 .build(),
+//         )
+//
+//         .wrap(
+//             Cors::default()
+//                 .allowed_origin("https://example.com")
+//                 .allowed_methods(vec!["GET", "POST"])
+//                 .allowed_headers(vec![actix_web::http::header::CONTENT_TYPE])
+//                 .max_age(3600),
+//         )
+//         .wrap(
+//             middleware::DefaultHeaders::new()
+//                 .add(("X-Custom-Header", "Value"))
+//                 .add(("Strict-Transport-Security", "max-age=63072000; includeSubDomains"))
+//                 .add(("X-Frame-Options", "DENY"))
+//                 .add(("X-Content-Type-Options", "nosniff")) // Corregido el error tipográfico
+//                 .add(("Content-Security-Policy", "default-src 'self'; script-src 'self'")),
+//         )
+//         //.wrap(rate_limiter)
+//         .wrap(middleware::Compress::default())
+//         .app_data(web::Data::new(metrics.clone()))
+fn app_factory(metrics: Arc<Metrics>) -> impl ServiceFactory<ServiceRequest, Config = (), Response = ServiceResponse, Error = actix_web::Error, InitError = ()> {
     App::new()
         .wrap(
-            SessionMiddleware::new(
+            SessionMiddleware::builder(
                 CookieSessionStore::default(),
                 secret_key(),
             )
+                .cookie_same_site(actix_web::cookie::SameSite::Strict)
+                .build(),
         )
-        //.cookie_secure(true) // Requiere HTTPS
-        //.cookie_http_only(true) // Evita acceso JS
-        .cookie_same_site(actix_web::cookie::SameSite::Strict)
         .wrap(
             Cors::default()
                 .allowed_origin("https://example.com")
@@ -119,28 +141,14 @@ fn app_factory() -> App() {
                 .allowed_headers(vec![actix_web::http::header::CONTENT_TYPE])
                 .max_age(3600),
         )
-        .wrap(
-            middleware::DefaultHeaders::new()
-                .add(("X-Custom-Header", "Value"))
-                .add(("Strict-Transport-Security", "max-age=63072000; includeSubDomains"))
-                .add(("X-Frame-Options", "DENY"))
-                .add(("X-Content-Type-Options", "nosniff"))
-                .add(("Content-Security-Policy", "default-src 'self'; script-src 'self'"))
-        )
-        .wrap(rate_limiter)
+        .wrap(middleware::DefaultHeaders::new().add(("X-Example-Header", "Value")))
         .wrap(middleware::Compress::default())
+        .app_data(web::Data::new(metrics.clone()))
 
-        // Compartir las métricas con las rutas
-        .app_data(web::Data::new(Metrics {
-            http_requests_total: http_requests_total.clone(),
-            request_duration: request_duration.clone(),
-        }))
-        // Endpoint para métricas
         .route("/metrics", web::get().to(move || {
-            let registry = registry_cloned.clone();
+            let registry = metrics.registry.clone(); // Usa el registry compartido
             async move { export_metrics(registry).await }
         }))
-
         .route("/", web::get().to(index_page))
         .route("/index.js", web::get().to(index_script))
         .route("/login", web::get().to(login_page))
@@ -156,10 +164,18 @@ fn app_factory() -> App() {
                 err,
                 error_400_utils::handle_400_error().into(),
             )
-            .into()
+                .into()
         }))
 }
 
+
+fn create_rate_limiter() -> RateLimiter<NotKeyed, InMemoryState, DefaultClock> {
+    // Crear una cuota: 100 solicitudes por cada 60 segundos
+    let quota = Quota::per_minute(NonZeroU32::new(100).unwrap());
+
+    // Crear un RateLimiter con memoria en el estado y reloj predeterminado
+    RateLimiter::direct(quota)
+}
 // Función para cargar certificados SSL
 // fn load_ssl_keys() -> std::io::Result<openssl::ssl::SslAcceptor> {
 //     use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
@@ -170,18 +186,6 @@ fn app_factory() -> App() {
 //     Ok(builder.build())
 // }
 
-
-// Manejador para el endpoint de métricas
-async fn export_metrics(registry: Arc<Registry>) -> HttpResponse {
-    let encoder = TextEncoder::new();
-    let metric_families = registry.gather();
-    let mut buffer = Vec::new();
-    encoder.encode(&metric_families, &mut buffer).unwrap();
-
-    HttpResponse::Ok()
-        .content_type("text/plain; charset=utf-8")
-        .body(buffer)
-}
 
 
 
@@ -198,16 +202,23 @@ async fn static_files(req: HttpRequest) -> HttpResponse {
     }
 }
 
-async fn index_page(session: Session) -> impl Responder {
-    if session.get::<String>("auth_token").unwrap_or(None).is_some() {
+
+async fn index_page(metrics: web::Data<Metrics>, session: Session) -> impl Responder {
+    metrics.http_requests_total.inc(); // Incrementar contador de solicitudes
+    let timer = metrics.request_duration.start_timer(); // Iniciar temporizador
+
+    let response = if session.get::<String>("auth_token").unwrap_or(None).is_some() {
         file_cache::file_handler("./static/index/index.html")
     } else {
         HttpResponse::Found()
-            //.append_header(("Location", "/login"))
-            .append_header(("login", "./login/login.html"))
+            .append_header(("Location", "/login"))
             .finish()
-    }
+    };
+
+    timer.observe_duration(); // Registrar duración de la solicitud
+    response
 }
+
 
 // Página principal protegida
 // async fn index_page(session: Session) -> impl Responder {
@@ -223,8 +234,6 @@ async fn index_page(session: Session) -> impl Responder {
 //             .finish()
 //     }
 // }
-
-
 
 async fn index_script() -> HttpResponse {
     file_cache::file_handler("./static/index/index_script.js")
@@ -249,7 +258,6 @@ async fn login_page() -> HttpResponse {
     println!("Sirviendo archivo desde /login: {}", path);
     file_cache::file_handler(path) // Sirve el archivo
 }
-
 
 async fn login_script() -> HttpResponse {
     file_cache::file_handler("./static/login/login_script.js")
@@ -295,9 +303,9 @@ async fn items_handler(session: Session) -> impl Responder {
     }
 }
 
-
 // Generar clave secreta para las sesiones
 fn secret_key() -> Key {
+    println!("Advertencia: Usando una clave secreta de prueba para las sesiones");
     Key::from(&[0; 64])
 }
 

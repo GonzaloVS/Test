@@ -33,7 +33,7 @@ lazy_static! {
 // }
 
 pub(crate) fn file_handler(file_path: &str) -> HttpResponse {
-    use std::fs;
+    //use std::fs;
     use std::path::Path;
 
     // Normalizar la ruta para evitar claves inconsistentes en el caché
