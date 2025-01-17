@@ -6,15 +6,40 @@ mod css_utils;
 use actix_cors::Cors;
 use actix_session::{storage::CookieSessionStore, Session, SessionMiddleware};
 use actix_web::{cookie::Key, middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use governor::{state::InMemoryState, RateLimiter};
 use std::io;
 use std::path::Path;
+use std::sync::Arc;
+use std::time::Duration;
 use actix_web::web::route;
+use governor::clock::DefaultClock;
+use prometheus::{Counter, Histogram, HistogramOpts, Opts, Registry, TextEncoder};
+
+struct Metrics {
+    http_requests_total: Counter,
+    request_duration: Histogram,
+}
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
     let css_dir = "./static";
     let output_file = "./static/all.css";
 
+    // Crear un registro de métricas global
+    let registry = Arc::new(Registry::new());
+
+    // Crear métricas: contador y un histograma
+    let http_requests_total = Counter::new("http_requests_total", "Total de solicitudes HTTP").unwrap();
+    let request_duration = Histogram::with_opts(
+        HistogramOpts::from(Opts::new("http_request_duration_seconds", "Duración de las solicitudes HTTP en segundos"))
+    ).unwrap();
+
+    // Registrar métricas en el registro
+    registry.register(Box::new(http_requests_total.clone())).unwrap();
+    registry.register(Box::new(request_duration.clone())).unwrap();
+
+    // Clonar el registro para usarlo en el servidor
+    let registry_cloned = registry.clone();
     // Primera combinación inicial
     // if let Err(e) = css_utils::combine_css(css_dir, output_file).await {
     //     eprintln!("Error inicial al combinar CSS: {}", e);
@@ -67,11 +92,26 @@ async fn start_http_server(addr: &str) -> io::Result<()> {
 // }
 
 fn app_factory() -> App() {
+
+    // let rate_limiter = RateLimiter::builder(InMemoryBackend::builder().build())
+    //     .interval(Duration::from_secs(60)) // Intervalo de tiempo
+    //     .max_requests(100) // Máximo de solicitudes permitidas
+    //     .build();
+    let rate_limiter = RateLimiter::builder(InMemoryState::default())
+        .clock(DefaultClock)
+        .interval(Duration::from_secs(60)) // Intervalo de tiempo
+        .max_requests(100) // Máximo de solicitudes permitidas
+        .build();
     App::new()
-        .wrap(SessionMiddleware::new(
-            CookieSessionStore::default(),
-            secret_key(),
-        ))
+        .wrap(
+            SessionMiddleware::new(
+                CookieSessionStore::default(),
+                secret_key(),
+            )
+        )
+        //.cookie_secure(true) // Requiere HTTPS
+        //.cookie_http_only(true) // Evita acceso JS
+        .cookie_same_site(actix_web::cookie::SameSite::Strict)
         .wrap(
             Cors::default()
                 .allowed_origin("https://example.com")
@@ -79,12 +119,28 @@ fn app_factory() -> App() {
                 .allowed_headers(vec![actix_web::http::header::CONTENT_TYPE])
                 .max_age(3600),
         )
-        .wrap(middleware::DefaultHeaders::new()
-            .add(("X-Custom-Header", "Value"))
-            .add(("Strict-Transport-Security", "max-age=63072000; includeSubDomains"))
-            .add(("X-Frame-Options", "DENY"))
-            .add(("X-Content-Type-Options", "nosniff")))
+        .wrap(
+            middleware::DefaultHeaders::new()
+                .add(("X-Custom-Header", "Value"))
+                .add(("Strict-Transport-Security", "max-age=63072000; includeSubDomains"))
+                .add(("X-Frame-Options", "DENY"))
+                .add(("X-Content-Type-Options", "nosniff"))
+                .add(("Content-Security-Policy", "default-src 'self'; script-src 'self'"))
+        )
+        .wrap(rate_limiter)
         .wrap(middleware::Compress::default())
+
+        // Compartir las métricas con las rutas
+        .app_data(web::Data::new(Metrics {
+            http_requests_total: http_requests_total.clone(),
+            request_duration: request_duration.clone(),
+        }))
+        // Endpoint para métricas
+        .route("/metrics", web::get().to(move || {
+            let registry = registry_cloned.clone();
+            async move { export_metrics(registry).await }
+        }))
+
         .route("/", web::get().to(index_page))
         .route("/index.js", web::get().to(index_script))
         .route("/login", web::get().to(login_page))
@@ -113,6 +169,20 @@ fn app_factory() -> App() {
 //     builder.set_certificate_chain_file("certs/certificate.crt")?;
 //     Ok(builder.build())
 // }
+
+
+// Manejador para el endpoint de métricas
+async fn export_metrics(registry: Arc<Registry>) -> HttpResponse {
+    let encoder = TextEncoder::new();
+    let metric_families = registry.gather();
+    let mut buffer = Vec::new();
+    encoder.encode(&metric_families, &mut buffer).unwrap();
+
+    HttpResponse::Ok()
+        .content_type("text/plain; charset=utf-8")
+        .body(buffer)
+}
+
 
 
 async fn static_files(req: HttpRequest) -> HttpResponse {
