@@ -1,27 +1,30 @@
-mod file_utils;
-mod file_cache;
-mod error_400_utils;
 mod css_utils;
+mod error_utils;
+mod file_cache;
+mod file_utils;
 mod metrics;
 
+use crate::metrics::{export_metrics, Metrics};
 use actix_cors::Cors;
-use actix_session::{storage::CookieSessionStore, Session, SessionMiddleware};
-use actix_web::{cookie::Key, middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
-use governor::{state::InMemoryState, Quota, RateLimiter};
-use governor::clock::DefaultClock;
+use actix_session::storage::CookieSessionStore;
+use actix_session::{Session, SessionMiddleware};
+use actix_web::cookie::Key;
+use actix_web::dev::{ServiceRequest, ServiceResponse};
+use actix_web::{middleware, web, web::Data, App, Error, HttpRequest, HttpResponse, HttpServer, Responder, };
+use governor::clock::{DefaultClock, QuantaClock};
+use governor::state::{InMemoryState, NotKeyed};
+use governor::{Quota, RateLimiter};
 use std::io;
 use std::num::NonZeroU32;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use actix_web::dev::{ServiceFactory, ServiceRequest, ServiceResponse};
-use governor::state::NotKeyed;
-use crate::metrics::{export_metrics, Metrics};
-
+use actix_web::body::BoxBody;
+use governor::middleware::NoOpMiddleware;
+use governor::state::keyed::DefaultKeyedStateStore;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
-
     // Crear el registro de métricas y las métricas
     let registry = Arc::new(prometheus::Registry::new());
     let metrics = Arc::new(Metrics::new(registry.clone()));
@@ -53,129 +56,175 @@ async fn main() -> io::Result<()> {
     // );
 
     // Iniciar el servidor HTTP
-    start_http_server(http_addr, metrics)
-        .await
-}
-
-async fn start_http_server(addr: &str, metrics: Arc<Metrics>) -> io::Result<()> {
-    HttpServer::new({
+    HttpServer::new(move || {
         let metrics = metrics.clone();
-        move || app_factory(metrics.clone())
-    })
-        .bind(addr)?
-        .workers(8)
-        .max_connections(50_000)
-        .max_connection_rate(1_000)
-        .client_request_timeout(Duration::from_secs(30))
-        .client_disconnect_timeout(Duration::from_secs(5))
-        .run()
-        .await
-}
-
-// async fn start_https_server(addr: &str,  metrics: Arc<Metrics>) -> io::Result<()> {
-//     HttpServer::new(move || app_factory(metrics.clone()))
-//         .bind_openssl(addr, load_ssl_keys()?)?
-//         .workers(8)
-//         .max_connections(50_000)
-//         .max_connection_rate(1_000)
-//         .client_request_timeout(std::time::Duration::from_secs(30))
-//         .client_disconnect_timeout(std::time::Duration::from_secs(5))
-//         .run()
-//         .await
-// }
-
-// fn app_factory(metrics: Arc<Metrics>) -> App<impl ServiceFactory<ServiceRequest>>  {
-//     let rate_limiter = create_rate_limiter();
-//
-//     App::new()
-//     //     .wrap(
-//     //         SessionMiddleware::new(
-//     //             CookieSessionStore::default(),
-//     //             secret_key(),
-//     //         )
-//     //     )
-//     //     .cookie_same_site(actix_web::cookie::SameSite::Strict)
-//
-//     // )
-//         .wrap(
-//             SessionMiddleware::builder(
-//                 CookieSessionStore::default(),
-//                 secret_key(),
-//             )
-//                 .cookie_same_site(actix_web::cookie::SameSite::Strict)
-//                 .build(),
-//         )
-//
-//         .wrap(
-//             Cors::default()
-//                 .allowed_origin("https://example.com")
-//                 .allowed_methods(vec!["GET", "POST"])
-//                 .allowed_headers(vec![actix_web::http::header::CONTENT_TYPE])
-//                 .max_age(3600),
-//         )
-//         .wrap(
-//             middleware::DefaultHeaders::new()
-//                 .add(("X-Custom-Header", "Value"))
-//                 .add(("Strict-Transport-Security", "max-age=63072000; includeSubDomains"))
-//                 .add(("X-Frame-Options", "DENY"))
-//                 .add(("X-Content-Type-Options", "nosniff")) // Corregido el error tipográfico
-//                 .add(("Content-Security-Policy", "default-src 'self'; script-src 'self'")),
-//         )
-//         //.wrap(rate_limiter)
-//         .wrap(middleware::Compress::default())
-//         .app_data(web::Data::new(metrics.clone()))
-fn app_factory(metrics: Arc<Metrics>) -> impl ServiceFactory<ServiceRequest, Config = (), Response = ServiceResponse, Error = actix_web::Error, InitError = ()> {
-    App::new()
-        .wrap(
-            SessionMiddleware::builder(
-                CookieSessionStore::default(),
-                secret_key(),
+        App::new()
+            .wrap(
+                SessionMiddleware::builder(CookieSessionStore::default(), secret_key())
+                    .cookie_same_site(actix_web::cookie::SameSite::Strict)
+                    .build(),
             )
-                .cookie_same_site(actix_web::cookie::SameSite::Strict)
-                .build(),
-        )
-        .wrap(
-            Cors::default()
-                .allowed_origin("https://example.com")
-                .allowed_methods(vec!["GET", "POST"])
-                .allowed_headers(vec![actix_web::http::header::CONTENT_TYPE])
-                .max_age(3600),
-        )
-        .wrap(middleware::DefaultHeaders::new().add(("X-Example-Header", "Value")))
-        .wrap(middleware::Compress::default())
-        .app_data(web::Data::new(metrics.clone()))
-
-        .route("/metrics", web::get().to(move || {
-            let registry = metrics.registry.clone(); // Usa el registry compartido
-            async move { export_metrics(registry).await }
-        }))
-        .route("/", web::get().to(index_page))
-        .route("/index.js", web::get().to(index_script))
-        .route("/login", web::get().to(login_page))
-        .route("/login.js", web::get().to(login_script))
-        .route("/all.css", web::get().to(allcss_page))
-        .route("/antigua-url", web::get().to(redirect_301))
-        .route("/temporal-url", web::get().to(redirect_302))
-        .route("/items", web::get().to(items_handler))
-        .route("/static/{filename:.*}", web::get().to(static_files))
-        .default_service(web::route().to(not_found))
-        .app_data(web::JsonConfig::default().error_handler(|err, _req| {
-            actix_web::error::InternalError::from_response(
-                err,
-                error_400_utils::handle_400_error().into(),
+            //.wrap_fn(rate_limit_middleware)
+            .wrap_fn(|req, srv| rate_limit_middleware(req, srv))
+            .wrap(
+                Cors::default()
+                    .allowed_origin("https://example.com")
+                    .allowed_methods(vec!["GET", "POST"])
+                    .allowed_headers(vec![actix_web::http::header::CONTENT_TYPE])
+                    .max_age(3600),
             )
+            .wrap(middleware::DefaultHeaders::new().add(("X-Example-Header", "Value")))
+            .wrap(middleware::Compress::default())
+            .app_data(web::Data::new(metrics.clone()))
+            .route(
+                "/metrics",
+                web::get().to(move || {
+                    let registry = metrics.registry.clone(); // Usa el registry compartido
+                    async move { export_metrics(registry).await }
+                }),
+            )
+            .route("/", web::get().to(index_page))
+            .route("/index.js", web::get().to(index_script))
+            .route("/login", web::get().to(login_page))
+            .route("/login.js", web::get().to(login_script))
+            .route("/all.css", web::get().to(allcss_page))
+            .route("/antigua-url", web::get().to(redirect_301))
+            .route("/temporal-url", web::get().to(redirect_302))
+            .route("/items", web::get().to(items_handler))
+            .route("/static/{filename:.*}", web::get().to(static_files))
+            .default_service(web::route().to(not_found))
+            .app_data(web::JsonConfig::default().error_handler(|err, _req| {
+                actix_web::error::InternalError::from_response(
+                    err,
+                    error_utils::handle_400_error().into(),
+                )
                 .into()
-        }))
+            }))
+    })
+    .bind(http_addr)?
+    .workers(8)
+    .max_connections(50_000)
+    .max_connection_rate(1_000)
+    .client_request_timeout(Duration::from_secs(30))
+    .client_disconnect_timeout(Duration::from_secs(5))
+    .run()
+    .await?;
+
+    // Iniciar servidor HTTPS (comentado, activar cuando sea necesario)
+    /*
+    HttpServer::new( move || {
+         let metrics = metrics.clone();
+             App::new()
+                 .wrap(
+                     SessionMiddleware::builder(
+                         CookieSessionStore::default(),
+                         secret_key(),
+                     )
+                         .cookie_same_site(actix_web::cookie::SameSite::Strict)
+                         .build(),
+                 )
+                 .wrap(
+                     Cors::default()
+                         .allowed_origin("https://example.com")
+                         .allowed_methods(vec!["GET", "POST"])
+                         .allowed_headers(vec![actix_web::http::header::CONTENT_TYPE])
+                         .max_age(3600),
+                 )
+                 .wrap(middleware::DefaultHeaders::new().add(("X-Example-Header", "Value")))
+                 .wrap(middleware::Compress::default())
+                 .app_data(web::Data::new(metrics.clone()))
+
+                 .route("/metrics", web::get().to(move || {
+                     let registry = metrics.registry.clone(); // Usa el registry compartido
+                     async move { export_metrics(registry).await }
+                 }))
+                 .route("/", web::get().to(index_page))
+                 .route("/index.js", web::get().to(index_script))
+                 .route("/login", web::get().to(login_page))
+                 .route("/login.js", web::get().to(login_script))
+                 .route("/all.css", web::get().to(allcss_page))
+                 .route("/antigua-url", web::get().to(redirect_301))
+                 .route("/temporal-url", web::get().to(redirect_302))
+                 .route("/items", web::get().to(items_handler))
+                 .route("/static/{filename:.*}", web::get().to(static_files))
+                 .default_service(web::route().to(not_found))
+                 .app_data(web::JsonConfig::default().error_handler(|err, _req| {
+                     actix_web::error::InternalError::from_response(
+                         err,
+                         error_400_utils::handle_400_error().into(),
+                     )
+                         .into()
+                 }))
+     })
+     .bind_openssl(https_addr, load_ssl_keys()?)?
+     .workers(8)
+     .max_connections(50_000)
+     .max_connection_rate(1_000)
+     .client_request_timeout(Duration::from_secs(30))
+     .client_disconnect_timeout(Duration::from_secs(5))
+     .run()
+     .await?;
+     */
+
+    Ok(())
 }
 
-
-fn create_rate_limiter() -> RateLimiter<NotKeyed, InMemoryState, DefaultClock> {
+fn create_global_rate_limiter() -> Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock>> {
     // Crear una cuota: 100 solicitudes por cada 60 segundos
     let quota = Quota::per_minute(NonZeroU32::new(100).unwrap());
-
-    // Crear un RateLimiter con memoria en el estado y reloj predeterminado
-    RateLimiter::direct(quota)
+    Arc::new(RateLimiter::direct(quota))
 }
+
+fn create_client_rate_limiter() -> Arc<RateLimiter<String, DefaultKeyedStateStore<String>, QuantaClock>> {
+    let quota = Quota::per_minute(NonZeroU32::new(100).unwrap());
+    Arc::new(RateLimiter::keyed(quota))
+}
+
+async fn rate_limit_middleware<S>(
+    req: ServiceRequest,
+    srv: &middleware::Next<ServiceRequest>,
+) -> Result<ServiceResponse<BoxBody>, Error>
+    where
+    S: actix_web::dev::Service<ServiceRequest, Response = ServiceResponse, Error = Error>,
+    {
+    let global_limiter = req
+        .app_data::<Data<Arc<RateLimiter<NotKeyed, InMemoryState, QuantaClock, NoOpMiddleware>>>>()
+        .unwrap();
+    let client_limiter = req
+        .app_data::<Data<Arc<RateLimiter<String, DefaultKeyedStateStore<String>, QuantaClock>>>>()
+        .unwrap();
+
+    let client_ip = req
+        .connection_info()
+        .realip_remote_addr()
+        .unwrap_or("unknown")
+        .to_string();
+
+    // Verifica el RateLimiter global
+    if global_limiter.check().is_err() {
+        return Ok(req.into_response(
+            HttpResponse::TooManyRequests().finish().map_into_boxed_body(),
+        ));
+        // return Ok(req.into_response(
+        //     HttpResponse::TooManyRequests().body("Global rate limit exceeded").map_into_boxed_body(),
+        // ));
+    }
+
+    // Verifica el RateLimiter por cliente
+    if client_limiter.check_key(&client_ip).is_err() {
+        return Ok(req.into_response(
+            HttpResponse::TooManyRequests().finish().map_into_boxed_body(),
+        ));
+        // return Ok(req.into_response(
+        //     HttpResponse::TooManyRequests().body("Client rate limit exceeded").map_into_boxed_body(),
+        // ));
+    }
+
+    let res = srv.call(req).await?;
+    Ok(res.map_into_boxed_body())
+}
+
+
 // Función para cargar certificados SSL
 // fn load_ssl_keys() -> std::io::Result<openssl::ssl::SslAcceptor> {
 //     use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
@@ -186,14 +235,14 @@ fn create_rate_limiter() -> RateLimiter<NotKeyed, InMemoryState, DefaultClock> {
 //     Ok(builder.build())
 // }
 
-
-
-
 async fn static_files(req: HttpRequest) -> HttpResponse {
     let filename: String = req.match_info().query("filename").parse().unwrap();
     let path = format!("./static/{}", filename);
 
-    println!("RUTA GENÉRICA: Solicitado: {}, Mapeado a: {}", filename, path);
+    println!(
+        "RUTA GENÉRICA: Solicitado: {}, Mapeado a: {}",
+        filename, path
+    );
 
     if Path::new(&path).exists() {
         file_cache::file_handler(&path)
@@ -207,7 +256,11 @@ async fn index_page(metrics: web::Data<Metrics>, session: Session) -> impl Respo
     metrics.http_requests_total.inc(); // Incrementar contador de solicitudes
     let timer = metrics.request_duration.start_timer(); // Iniciar temporizador
 
-    let response = if session.get::<String>("auth_token").unwrap_or(None).is_some() {
+    let response = if session
+        .get::<String>("auth_token")
+        .unwrap_or(None)
+        .is_some()
+    {
         file_cache::file_handler("./static/index/index.html")
     } else {
         HttpResponse::Found()
@@ -218,7 +271,6 @@ async fn index_page(metrics: web::Data<Metrics>, session: Session) -> impl Respo
     timer.observe_duration(); // Registrar duración de la solicitud
     response
 }
-
 
 // Página principal protegida
 // async fn index_page(session: Session) -> impl Responder {
@@ -292,12 +344,12 @@ async fn redirect_302() -> HttpResponse {
 // }
 
 async fn items_handler(session: Session) -> impl Responder {
-    if session.get::<String>("auth_token").unwrap_or(None).is_some() {
-        HttpResponse::Ok().json(vec![
-            "Item 1",
-            "Item 2",
-            "Item 3",
-        ]) // Devuelve una lista de ítems como JSON
+    if session
+        .get::<String>("auth_token")
+        .unwrap_or(None)
+        .is_some()
+    {
+        HttpResponse::Ok().json(vec!["Item 1", "Item 2", "Item 3"]) // Devuelve una lista de ítems como JSON
     } else {
         HttpResponse::Unauthorized().body("No autorizado")
     }
@@ -308,4 +360,3 @@ fn secret_key() -> Key {
     println!("Advertencia: Usando una clave secreta de prueba para las sesiones");
     Key::from(&[0; 64])
 }
-
