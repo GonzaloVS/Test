@@ -195,8 +195,6 @@ async fn rate_limit_middleware(
     Ok(res)
 
 
-
-
     // Obtener la dirección IP del cliente
     // let client_ip = req
     //     .connection_info()
