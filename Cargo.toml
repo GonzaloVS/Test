@@ -1,0 +1,16 @@
+[package]
+name = "test2"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+# Tokio para manejo asíncrono
+tokio = { version = "1.43.0", features = ["full"] }
+# Actix para el servidor web
+actix-web = "4.9.0"
+# Detectar automáticamente el tipo MIME (Multipurpose Internet Mail Extensions) de un archivo basándose en su extensión.
+mime_guess = "2.0.5"
+
+
+
