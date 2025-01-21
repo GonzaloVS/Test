@@ -11,7 +11,7 @@ use actix_session::{Session, SessionMiddleware};
 use actix_web::cookie::Key;
 use actix_web::dev::{ServiceRequest, ServiceResponse};
 use actix_web::{middleware, web, web::Data, App, Error, HttpRequest, HttpResponse, HttpServer, Responder, };
-use governor::clock::{DefaultClock, QuantaClock};
+use governor::clock::{ QuantaClock};
 use governor::state::{InMemoryState, NotKeyed};
 use governor::{Quota, RateLimiter};
 use std::io;
@@ -19,9 +19,10 @@ use std::num::NonZeroU32;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use actix_web::body::BoxBody;
+use actix_web::body::{MessageBody};
+use actix_web::middleware::Next;
 use governor::middleware::NoOpMiddleware;
-use governor::state::keyed::DefaultKeyedStateStore;
+
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
@@ -37,12 +38,12 @@ async fn main() -> io::Result<()> {
         eprintln!("Error inicial al combinar CSS: {}", e);
     }
 
-    // // Iniciar el monitoreo de cambios
-    // tokio::spawn(async move {
-    //     if let Err(e) = css_utils::monitor_changes(css_dir, output_file).await {
-    //         eprintln!("Error en el monitoreo de cambios: {}", e);
-    //     }
-    // });
+    // Iniciar el monitoreo de cambios
+    tokio::spawn(async move {
+        if let Err(e) = css_utils::monitor_changes(css_dir, output_file).await {
+            eprintln!("Error en el monitoreo de cambios: {}", e);
+        }
+    });
 
     //env_logger::init(); // Inicializa logs
 
@@ -59,47 +60,50 @@ async fn main() -> io::Result<()> {
     HttpServer::new(move || {
         let metrics = metrics.clone();
         App::new()
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), secret_key())
-                    .cookie_same_site(actix_web::cookie::SameSite::Strict)
-                    .build(),
-            )
-            //.wrap_fn(rate_limit_middleware)
-            .wrap_fn(|req, srv| rate_limit_middleware(req, srv))
-            .wrap(
-                Cors::default()
-                    .allowed_origin("https://example.com")
-                    .allowed_methods(vec!["GET", "POST"])
-                    .allowed_headers(vec![actix_web::http::header::CONTENT_TYPE])
-                    .max_age(3600),
-            )
-            .wrap(middleware::DefaultHeaders::new().add(("X-Example-Header", "Value")))
-            .wrap(middleware::Compress::default())
-            .app_data(web::Data::new(metrics.clone()))
-            .route(
-                "/metrics",
-                web::get().to(move || {
-                    let registry = metrics.registry.clone(); // Usa el registry compartido
-                    async move { export_metrics(registry).await }
-                }),
-            )
+
             .route("/", web::get().to(index_page))
-            .route("/index.js", web::get().to(index_script))
-            .route("/login", web::get().to(login_page))
-            .route("/login.js", web::get().to(login_script))
-            .route("/all.css", web::get().to(allcss_page))
-            .route("/antigua-url", web::get().to(redirect_301))
-            .route("/temporal-url", web::get().to(redirect_302))
-            .route("/items", web::get().to(items_handler))
-            .route("/static/{filename:.*}", web::get().to(static_files))
-            .default_service(web::route().to(not_found))
-            .app_data(web::JsonConfig::default().error_handler(|err, _req| {
-                actix_web::error::InternalError::from_response(
-                    err,
-                    error_utils::handle_400_error().into(),
-                )
-                .into()
-            }))
+            // .route("/index.js", web::get().to(index_script))
+            // .route("/login", web::get().to(login_page))
+            // .route("/login.js", web::get().to(login_script))
+            // .route("/all.css", web::get().to(allcss_page))
+            // .route("/antigua-url", web::get().to(redirect_301))
+            // .route("/temporal-url", web::get().to(redirect_302))
+            // .route("/items", web::get().to(items_handler))
+            // .route("/static/{filename:.*}", web::get().to(static_files))
+
+            // .wrap(
+            //     SessionMiddleware::builder(CookieSessionStore::default(), secret_key())
+            //         .cookie_same_site(actix_web::cookie::SameSite::Strict)
+            //         .build(),
+            // )
+            // .wrap(middleware::from_fn(rate_limit_middleware))
+            // //.wrap_fn(|req, srv| rate_limit_middleware(req, srv))
+            // .wrap(
+            //     Cors::default()
+            //         .allowed_origin("https://example.com")
+            //         .allowed_methods(vec!["GET", "POST"])
+            //         .allowed_headers(vec![actix_web::http::header::CONTENT_TYPE])
+            //         .max_age(3600),
+            // )
+            // .wrap(middleware::DefaultHeaders::new().add(("X-Example-Header", "Value")))
+            // .wrap(middleware::Compress::default())
+            // .app_data(web::Data::new(metrics.clone()))
+            // .route(
+            //     "/metrics",
+            //     web::get().to(move || {
+            //         let registry = metrics.registry.clone(); // Usa el registry compartido
+            //         async move { export_metrics(registry).await }
+            //     }),
+            // )
+
+            // .default_service(web::route().to(not_found))
+            // .app_data(web::JsonConfig::default().error_handler(|err, _req| {
+            //     actix_web::error::InternalError::from_response(
+            //         err,
+            //         error_utils::handle_400_error().into(),
+            //     )
+            //     .into()
+            // }))
     })
     .bind(http_addr)?
     .workers(8)
@@ -169,60 +173,84 @@ async fn main() -> io::Result<()> {
     Ok(())
 }
 
-fn create_global_rate_limiter() -> Arc<RateLimiter<NotKeyed, InMemoryState, DefaultClock>> {
-    // Crear una cuota: 100 solicitudes por cada 60 segundos
-    let quota = Quota::per_minute(NonZeroU32::new(100).unwrap());
-    Arc::new(RateLimiter::direct(quota))
-}
-
-fn create_client_rate_limiter() -> Arc<RateLimiter<String, DefaultKeyedStateStore<String>, QuantaClock>> {
-    let quota = Quota::per_minute(NonZeroU32::new(100).unwrap());
-    Arc::new(RateLimiter::keyed(quota))
-}
-
-async fn rate_limit_middleware<S>(
+async fn rate_limit_middleware(
     req: ServiceRequest,
-    srv: &middleware::Next<ServiceRequest>,
-) -> Result<ServiceResponse<BoxBody>, Error>
-    where
-    S: actix_web::dev::Service<ServiceRequest, Response = ServiceResponse, Error = Error>,
-    {
+    next: Next<impl MessageBody>,
+) -> Result<ServiceResponse<impl MessageBody>, Error> {
+
+    let max_global_connections = Quota::per_minute(NonZeroU32::new(100).unwrap());
+    Arc::new(RateLimiter::direct(max_global_connections));
+
     let global_limiter = req
         .app_data::<Data<Arc<RateLimiter<NotKeyed, InMemoryState, QuantaClock, NoOpMiddleware>>>>()
         .unwrap();
-    let client_limiter = req
-        .app_data::<Data<Arc<RateLimiter<String, DefaultKeyedStateStore<String>, QuantaClock>>>>()
-        .unwrap();
 
-    let client_ip = req
-        .connection_info()
-        .realip_remote_addr()
-        .unwrap_or("unknown")
-        .to_string();
+    //Verificar el limitador global
+    if global_limiter.check().is_err() { return Err(actix_web::error::ErrorTooManyRequests("Global rate limit exceeded")); }
 
-    // Verifica el RateLimiter global
-    if global_limiter.check().is_err() {
-        return Ok(req.into_response(
-            HttpResponse::TooManyRequests().finish().map_into_boxed_body(),
-        ));
-        // return Ok(req.into_response(
-        //     HttpResponse::TooManyRequests().body("Global rate limit exceeded").map_into_boxed_body(),
-        // ));
-    }
+    // invoke the wrapped middleware or service
+    let res = next.call(req).await?;
 
-    // Verifica el RateLimiter por cliente
-    if client_limiter.check_key(&client_ip).is_err() {
-        return Ok(req.into_response(
-            HttpResponse::TooManyRequests().finish().map_into_boxed_body(),
-        ));
-        // return Ok(req.into_response(
-        //     HttpResponse::TooManyRequests().body("Client rate limit exceeded").map_into_boxed_body(),
-        // ));
-    }
+    // post-processing
+    Ok(res)
 
-    let res = srv.call(req).await?;
-    Ok(res.map_into_boxed_body())
+
+
+
+    // Obtener la dirección IP del cliente
+    // let client_ip = req
+    //     .connection_info()
+    //     .realip_remote_addr()
+    //     .unwrap_or("unknown")
+    //     .to_string();
+    //
+
+    // invoke the wrapped middleware or service
+    // let res = next.call(req).await?;
+    //
+    // // post-processing
+    //
+    // Ok(res)
+    //
+    //
+
+//
+    //
+    // let max_client_connections = Quota::per_minute(NonZeroU32::new(100).unwrap());
+    // Arc::new(RateLimiter::keyed(max_client_connections));
+    //
+    // println!("Middleware: Procesando solicitud para {}", req.path());
+    //
+    // // Obtener el limitador global
+    //
+    //
+    // // Obtener el limitador por cliente
+    // let client_limiter = req
+    //     .app_data::<Data<Arc<RateLimiter<String, DefaultKeyedStateStore<String>, QuantaClock>>>>()
+    //     .unwrap();
+    //
+    // // Obtener la dirección IP del cliente
+    // let client_ip = req
+    //     .connection_info()
+    //     .realip_remote_addr()
+    //     .unwrap_or("unknown")
+    //     .to_string();
+    //
+    //
+    //
+    // // Verificar el limitador por cliente
+    // if client_limiter.check_key(&client_ip).is_err() {
+    //     return Ok(req.into_response(
+    //         HttpResponse::TooManyRequests()
+    //             .body("Client rate limit exceeded")
+    //             .map_into_boxed_body(),
+    //     ));
+    // }
+    //
+    // // Continuar con el siguiente middleware o controlador
+    // srv.call(req).await
 }
+
 
 
 // Función para cargar certificados SSL
@@ -272,31 +300,9 @@ async fn index_page(metrics: web::Data<Metrics>, session: Session) -> impl Respo
     response
 }
 
-// Página principal protegida
-// async fn index_page(session: Session) -> impl Responder {
-//     if session.get::<String>("auth_token").unwrap_or(None).is_some() {
-//         HttpResponse::Ok()
-//             .append_header(("Cache-Control", "max-age=31536000")) // 1 año
-//             .append_header(("ETag", "custom-etag-value"))
-//             .body("Página principal protegida")
-//
-//     } else {
-//         HttpResponse::Found()
-//             .append_header(("Location", "/login"))
-//             .finish()
-//     }
-// }
-
 async fn index_script() -> HttpResponse {
     file_cache::file_handler("./static/index/index_script.js")
 }
-
-// async fn login_page() -> HttpResponse {
-//     //file_cache::file_handler(".static/login/login.html")
-//     HttpResponse::Found()
-//         .append_header(("login", ".static/login/login.html"))
-//         .finish()
-// }
 
 async fn login_page() -> HttpResponse {
     let path = "./static/login/login.html"; // Ruta completa al archivo
