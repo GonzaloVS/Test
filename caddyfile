@@ -1,0 +1,48 @@
+{
+    # Logs detallados para pruebas locales
+    log {
+        output stdout
+        format console
+    }
+
+    # No usar Let's Encrypt para pruebas locales
+    local_certs
+}
+
+localhost:8080 {
+    # Redirección HTTP a HTTPS
+    redir https://{host}{uri}
+
+    # Proxy inverso para /api/*
+    reverse_proxy /api/* localhost:8000
+
+    # Servir archivos estáticos desde un directorio local
+    root * ./static
+    file_server {
+        browse
+    }
+
+    # Habilitar compresión Gzip, Brotli y Zstd
+    encode gzip zstd brotli
+
+    # Configurar límites de conexiones
+    header {
+        X-RateLimit-Limit "10" # Límite simulado para pruebas
+    }
+}
+
+localhost:8443 {
+    # Servir con HTTPS usando certificados de prueba
+    tls /path/to/cert.pem /path/to/key.pem
+
+    # Proxy inverso para /api/*
+    reverse_proxy /api/* localhost:8000
+
+    # Compresión habilitada
+    encode gzip zstd brotli
+
+    root * ./static
+    file_server {
+        browse
+    }
+}

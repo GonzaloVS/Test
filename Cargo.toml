@@ -7,21 +7,8 @@ edition = "2021"
 # Actix para el servidor web
 #actix-web = { version = "4.9.0", features = ["openssl"] }
 actix-web = "4.9.0"
-actix-session = { version = "0.10.1", features = ["cookie-session"] }
-actix-cors = "0.7.0"
-
 # Tokio para manejo asíncrono
 tokio = { version = "1.43.0", features = ["full"] }
-
-# Monitoreo de cambios en archivos
-notify = "8.0.0"
-
-lazy_static = "1.5.0"
-sha2 = "0.10.8"
-mime = "0.3.17"
-#openssl = "0.10.68"
-governor = {version = "0.8"}
-prometheus = "0.13.4"
 
 
 [features]
