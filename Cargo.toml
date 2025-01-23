@@ -5,10 +5,9 @@ edition = "2021"
 
 [dependencies]
 # Actix para el servidor web
-#actix-web = { version = "4.9.0", features = ["openssl"] }
 actix-web = "4.9.0"
-# Tokio para manejo asíncrono
-tokio = { version = "1.43.0", features = ["full"] }
+
+serde_json = "1.0.135"
 
 
 [features]
