@@ -1,6 +1,6 @@
-/* ./static\all.css */
+/* .\all.css */
 
-/* ./static\index\index_styles.css */
+/* .\index\index_styles.css */
 .index-page {
     font-family: Arial, sans-serif;
     margin: 0;
@@ -104,7 +104,7 @@ header {
     width: 100%;
     text-align: center;
 }
-/* ./static\login\login_styles.css */
+/* .\login\login_styles.css */
 .login-page {
     font-family: Arial, sans-serif;
     margin: 0;

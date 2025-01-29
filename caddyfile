@@ -1,14 +1,16 @@
 http://localhost:80 {
     root * C:\Users\gonzo\RustroverProjects\Test\static
     file_server
-	
-		 # Proxy inverso para la ruta /api hacia el servidor Rust en http://localhost:8000
+
+
+	# Proxy inverso para la ruta /api hacia el servidor Rust en http://localhost:8000
     reverse_proxy /api/* http://localhost:8000
-	
+
 	# Denegar acceso a todas las rutas por defecto
     respond * 404
 
-# Permitir acceso a la carpeta public dentro de dominio1.com
+
+    # Permitir acceso a la carpeta public dentro de dominio1.com
     handle /dominio1.com/public/* {
         file_server
     }

@@ -5,9 +5,21 @@ document.getElementById('login-form').addEventListener('submit', async function 
     const password = document.getElementById('password').value;
     const errorMessage = document.getElementById('error-message');
 
+    // Verificación de credenciales predeterminadas
+    if (username === "admin" && password === "1234") {
+        const token = "fake-admin-token"; // Puedes generar un token ficticio
+
+        // Guardar el token en localStorage
+        localStorage.setItem('authToken', token);
+
+        // Redirigir a la página principal
+        window.location.href = '/';
+        return;
+    }
+
     try {
         // Enviar credenciales al servidor
-        const response = await fetch('static/login', {
+        const response = await fetch('/login', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -43,7 +55,7 @@ window.onload = async function () {
     const authToken = localStorage.getItem('authToken');
     if (!authToken) {
         // Redirigir al login si no hay token
-        window.location.href = 'static/login';
+        window.location.href = '/login';
         return;
     }
 
@@ -58,10 +70,10 @@ window.onload = async function () {
         if (response.status === 401) {
             // Redirigir al login si la sesión no es válida
             localStorage.removeItem('authToken');
-            window.location.href = 'static/login';
+            window.location.href = '/login';
         }
     } catch (error) {
         console.error('Error al verificar la sesión:', error);
-        window.location.href = 'static/login';
+        window.location.href = '/login';
     }
 };
