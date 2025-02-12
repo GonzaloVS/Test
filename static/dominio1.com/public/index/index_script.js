@@ -8,7 +8,7 @@ async function fetchItems() {
 
   try {
     // Solicitud al servidor para obtener los datos
-    const response = await fetch('/items', {
+    const response = await fetch('/api/items', {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -23,9 +23,9 @@ async function fetchItems() {
 
       items.forEach(item => {
         const row = table.insertRow();
-        row.insertCell(0).textContent = item.id;
-        row.insertCell(1).textContent = item.name;
-        row.insertCell(2).textContent = item.description;
+        row.insertCell(0).textContent = item.id || '-';
+        row.insertCell(1).textContent = item.name || '-';
+        row.insertCell(2).textContent = item.description || '-';
       });
     } else if (response.status === 401) {
       alert('Sesión no válida. Redirigiendo a login.');

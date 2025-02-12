@@ -1,6 +1,6 @@
-/* .\all.css */
+/* ./static\all.css */
 
-/* .\dominio1.com\public\all.css */
+/* ./static\dominio1.com\public\all.css */
 /* .\all.css */
 
 /* .\index\index_styles.css */
@@ -182,7 +182,7 @@ header {
     display: none;
 }
 
-/* .\dominio1.com\public\index\index_styles.css */
+/* ./static\dominio1.com\public\index\index_styles.css */
 .index-page {
     font-family: Arial, sans-serif;
     margin: 0;
@@ -286,7 +286,7 @@ header {
     width: 100%;
     text-align: center;
 }
-/* .\dominio1.com\public\login\login_styles.css */
+/* ./static\dominio1.com\public\login\login_styles.css */
 .login-page {
     font-family: Arial, sans-serif;
     margin: 0;

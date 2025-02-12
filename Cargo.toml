@@ -9,6 +9,10 @@ actix-web = "4.9.0"
 
 serde_json = "1.0.135"
 
+# Para la base de datos
+tokio = { version = "1", features = ["full"] }
+sqlx = { version = "0.7", features = ["postgres", "runtime-tokio", "tls-native-tls"] }
+serde = { version = "1", features = ["derive"] }
 
 [features]
 default = []
