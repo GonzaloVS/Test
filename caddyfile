@@ -1,48 +1,89 @@
-http://localhost:80 {
-    root * C:\Users\gonzo\RustroverProjects\Test\static
+# The Caddyfile is an easy way to configure your Caddy web server.
+#
+# Unless the file starts with a global options block, the first
+# uncommented line is always the address of your site.
+#
+# To use your own domain name (with automatic HTTPS), first make
+# sure your domain's A/AAAA DNS records are properly pointed to
+# this machine's public IP, then replace ":80" below with your
+# domain name.
+avisabot.com {
+    # Set this path to your site's directory.
+    root * /var/www/avisabot.com
+
+    # Enable the static file server.
     file_server
 
-
-	# Proxy inverso para la ruta /api hacia el servidor Rust en http://localhost:8000
-    reverse_proxy /api/* http://localhost:8000
-
-	# Denegar acceso a todas las rutas por defecto
-    respond * 404
-
-
-    # Permitir acceso a la carpeta public dentro de dominio1.com
-    handle /dominio1.com/public/* {
-        file_server
-    }
-	
     handle / {
-        try_files /dominio1.com/index/index.html {path}
-		file_server
+        try_files /public/index/index.html {path}
+        file_server
     }
 
     handle /login {
-        try_files /dominio1.com/login/login.html {path}
-		file_server
-    }
-	
-	handle /all.css {
-        try_files /dominio1.com/all.css {path}
-		file_server
-    }
-
-	# Habilitar compresión Gzip y Zstd
-    encode gzip zstd 
-
-    # Configurar límites de conexiones
-    header {
-        X-RateLimit-Limit "10" # Límite simulado para pruebas
-    }
-	
-    handle_errors {
-        @404 {
-            expression {http.error.status_code} == 404
-        }
-        rewrite @404 /dominio1.com/404/404.html
+        try_files /public/login/login.html {path}
         file_server
     }
+
+    handle /all.css {
+        try_files /public/all.css {path}
+        file_server
+    }
+
+    #Permitir acceso al contenido public
+    handle /public/* {
+        file_server
+    }
+
+    #Denegar acceso a todas las rutas por defecto
+    handle {
+        rewrite * /public/404/404.html
+        file_server
+    }
+
+ 	handle_errors {
+        @404 {
+                expression {http.error.status.code} == 404
+        }
+        rewrite @404 /public/404/404.html
+        file_server
+    }
+
+    #Habilitar compresion Gzip y Zstd
+    encode gzip zstd
+
+    #Configurar limite de conexiones
+    header {
+            X-RateLimit-Limit "2" #Limite para pruebas
+    }
 }
+
+
+api.avisabot.com {
+
+        # Bloquear acceso a la raíz ("/") y a "/v1" sin subruta
+           @bloqueadas path_regexp bloqueadas ^/$|^/v1/?$
+           respond @bloqueadas `{
+               "error": "Acceso denegado",
+               "message": "La ruta solicitada no es válida"
+           }` 403
+
+        # ✅ Configurar el encabezado JSON después de `respond`
+           header @bloqueadas Content-Type application/json
+
+        # Permitir solo las rutas bajo "/v1/item" y "/v1/user"
+        @permitidas path \
+            /v1/item* \
+            /v1/user*
+
+        reverse_proxy @permitidas http://localhost:8000
+
+    # Configurar CORS para permitir peticiones REST desde la web
+        header {
+            Access-Control-Allow-Origin *
+            Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+            Access-Control-Allow-Headers "Content-Type, Authorization"
+        }
+}
+
+# Refer to the Caddy docs for more information:
+# https://caddyserver.com/docs/caddyfile
